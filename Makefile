@@ -26,7 +26,6 @@ test: build-test
 
 build-test: $(LIBFILE)
 	gcc ./tests/check_hashmap.c ./lib/$(LIBFILE) $(TEST_LIBS) -o $(BIN_DIR)/check_hashmap
-	
 
 clean:
 	rm -f $(OBJ_DIR)/*.o $(LIB_DIR)/$(LIBFILE)

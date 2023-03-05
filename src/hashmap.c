@@ -32,10 +32,14 @@ struct HashMap *hashmap_put_str(struct HashMap *hashmap, char *key, char *value)
     return hashmap_put(hashmap, key, &value, strlen(value)+1);
 }
 
-// hashmap_get returns NULL if the key cannot be located, otherwise a HashMapEntry pointer
+// hashmap_get returns NULL if the key cannot be located, otherwise a value pointer
 void *hashmap_get(struct HashMap *hashmap, char *key) {
     unsigned long long hash = _hash(key);
-    return _hashmap_get(hashmap, key, hash);
+    struct HashMapEntry *ent = _hashmap_get(hashmap, key, hash);
+    if (ent == NULL) {
+        return NULL;
+    }
+    return (void *)(ent+ent->value_offset);
 }
 
 // hashmap_del removes an item from the map or does nothing if the key doesn't exist
@@ -100,6 +104,14 @@ void hashmap_free(struct HashMap *hashmap) {
     free(hashmap);
 }
 
+char *hashmap_entry_key(struct HashMapEntry *ent) {
+    return (char *)(ent + ent->key_offset);
+}
+
+void *hashmap_entry_value(struct HashMapEntry *ent) {
+    return (void *)(ent + ent->value_offset);
+}
+
 // hashmap_iter returns a linked list link entry which can be used to traverse the map, using the ->next
 // pointer.  the terminal point of the list will have a ->next entry of NULL.
 struct PtrLink *hashmap_iter(struct HashMap *hashmap) {
@@ -142,6 +154,7 @@ struct HashMapEntry *_hashmap_new_item(char *key, void *value, int value_size) {
     hashMapEntry->hash = hash;
     memcpy(allocation + key_offset, key, key_size);
     memcpy(allocation + value_offset, value, value_size); 
+    return hashMapEntry;
 }
 
 struct HashMap *_hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashmap_entry) {
