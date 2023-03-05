@@ -4,6 +4,8 @@ CFLAGS =
 SRC_DIR = ./src
 OBJ_DIR = ./obj
 LIB_DIR = ./lib
+BIN_DIR = ./bin
+TEST_LIBS = -lcheck -lsubunit -lm
 
 .PHONY: dirs clean
 
@@ -15,8 +17,16 @@ $(OBJ_DIR)/%.o: src/%.c dirs
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 dirs:
-	mkdir -p lib
-	mkdir -p obj
+	mkdir -p $(LIB_DIR)
+	mkdir -p $(OBJ_DIR)
+	mkdir -p $(BIN_DIR)
+
+test: build-test
+	./bin/check_hashmap
+
+build-test: $(LIBFILE)
+	gcc ./tests/check_hashmap.c ./lib/$(LIBFILE) $(TEST_LIBS) -o $(BIN_DIR)/check_hashmap
+	
 
 clean:
 	rm -f $(OBJ_DIR)/*.o $(LIB_DIR)/$(LIBFILE)

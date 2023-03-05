@@ -29,3 +29,4 @@ extern void *hashmap_get(struct HashMap *hashmap, char *key);
 extern void hashmap_del(struct HashMap *hashmap, char *key);
 extern struct PtrLink *hashmap_iter(struct HashMap *hashmap);
 extern struct HashMapEntry *hashmap_iter_get(struct PtrLink *iter);
+extern void hashmap_free(struct HashMap *hashmap);

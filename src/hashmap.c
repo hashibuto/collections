@@ -88,6 +88,18 @@ void hashmap_del(struct HashMap *hashmap, char *key) {
     free(ent);
 }
 
+void hashmap_free(struct HashMap *hashmap) {
+    struct PtrLink *iter = hashmap_iter(hashmap);
+    while (iter != NULL) {
+        struct PtrLink *next_iter = iter->next;
+        free(iter->item);
+        free(iter);
+        iter = next_iter;
+    }
+    free(hashmap->items);
+    free(hashmap);
+}
+
 // hashmap_iter returns a linked list link entry which can be used to traverse the map, using the ->next
 // pointer.  the terminal point of the list will have a ->next entry of NULL.
 struct PtrLink *hashmap_iter(struct HashMap *hashmap) {
@@ -140,6 +152,8 @@ struct HashMap *_hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashm
             _hashmap_put(new_hashmap, iter->item);
             iter = iter->next;
         }
+        hashmap_free(hashmap);
+        hashmap = new_hashmap;
     }
     
     int offset = hashmap_entry->hash % hashmap->capacity;
