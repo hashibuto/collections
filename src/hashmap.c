@@ -3,13 +3,11 @@
 #include <string.h>
 #include "collections.h"
 
-#define HASHMAP_DEFAULT_CAPACITY 16
-#define HASHMAP_CAPACITY_GROW_THRESHOLD 0.75
-
 struct HashMap *_hashmap_new(int capacity);
 struct HashMap *_hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashmap_entry);
 struct HashMapEntry *_hashmap_new_item(char *key, void *value, int value_size);
 void *_hashmap_get(struct HashMap *hashmap, char *key, unsigned long long hash);
+void _hashmap_free(struct HashMap *hashmap, int free_entries);
 unsigned long long _hash(char *key);
 
 // hashmap_new creates a new hashmap
@@ -29,7 +27,7 @@ struct HashMap *hashmap_put_int(struct HashMap *hashmap, char *key, int value) {
 
 // hashmap_put_str is a convenience function for storing a string value on the hashmap
 struct HashMap *hashmap_put_str(struct HashMap *hashmap, char *key, char *value) {
-    return hashmap_put(hashmap, key, &value, strlen(value)+1);
+    return hashmap_put(hashmap, key, value, strlen(value)+1);
 }
 
 // hashmap_get returns NULL if the key cannot be located, otherwise a value pointer
@@ -93,15 +91,7 @@ void hashmap_del(struct HashMap *hashmap, char *key) {
 }
 
 void hashmap_free(struct HashMap *hashmap) {
-    struct PtrLink *iter = hashmap_iter(hashmap);
-    while (iter != NULL) {
-        struct PtrLink *next_iter = iter->next;
-        free(iter->item);
-        free(iter);
-        iter = next_iter;
-    }
-    free(hashmap->items);
-    free(hashmap);
+    _hashmap_free(hashmap, 1);
 }
 
 char *hashmap_entry_key(struct HashMapEntry *ent) {
@@ -145,27 +135,32 @@ struct HashMapEntry *_hashmap_new_item(char *key, void *value, int value_size) {
     int key_offset = sizeof(struct HashMapEntry);
     int key_size = strlen(key) + 1;
     int value_offset = key_offset + key_size;
-    void *allocation = malloc(value_offset + value_size);
-    struct HashMapEntry *hashMapEntry = allocation;
+    struct HashMapEntry *hashMapEntry = malloc(value_offset + value_size);
     hashMapEntry->prev = NULL;
     hashMapEntry->next = NULL;
     hashMapEntry->key_offset = key_offset;
     hashMapEntry->value_offset = value_offset;
     hashMapEntry->hash = hash;
-    memcpy(allocation + key_offset, key, key_size);
-    memcpy(allocation + value_offset, value, value_size); 
+    memcpy(hashMapEntry + key_offset, key, key_size);
+    memcpy(hashMapEntry + value_offset, value, value_size);
     return hashMapEntry;
 }
 
 struct HashMap *_hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashmap_entry) {
-    if ((float)hashmap->size + 1 / (float)hashmap->capacity >= HASHMAP_CAPACITY_GROW_THRESHOLD) {
+    float thresh = (float)(hashmap->size + 1) / (float)hashmap->capacity;
+    if (thresh >= HASHMAP_CAPACITY_GROW_THRESHOLD) {
         struct HashMap *new_hashmap = _hashmap_new(hashmap->capacity * 2);
         struct PtrLink *iter = hashmap_iter(hashmap);
         while (iter != NULL) {
-            _hashmap_put(new_hashmap, iter->item);
+            struct HashMapEntry *hme = iter->item;
+            // Reset these since the linked list is changing
+            hme->prev = NULL;
+            hme->next = NULL;
+            new_hashmap = _hashmap_put(new_hashmap, iter->item);
             iter = iter->next;
         }
-        hashmap_free(hashmap);
+        // Free the old hashmap, but don't release the memory for the HashMapEntry objects
+        _hashmap_free(hashmap, 0);
         hashmap = new_hashmap;
     }
     
@@ -197,6 +192,7 @@ struct HashMap *_hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashm
         hashmap->tail = link;
     }
     hashmap->size++;
+    return hashmap;
 }
 
 // _hashmap_new creates a new hashmap
@@ -210,6 +206,20 @@ struct HashMap *_hashmap_new(int capacity) {
     hashmap->tail = NULL;
 
     return hashmap;
+}
+
+void _hashmap_free(struct HashMap *hashmap, int free_entries) {
+    struct PtrLink *iter = hashmap_iter(hashmap);
+    while (iter != NULL) {
+        struct PtrLink *next_iter = iter->next;
+        if (free_entries) {
+            free(iter->item);
+        }
+        free(iter);
+        iter = next_iter;
+    }
+    free(hashmap->items);
+    free(hashmap);
 }
 
 // _hash returns the hashed value of the provided key

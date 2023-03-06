@@ -1,3 +1,6 @@
+#define HASHMAP_DEFAULT_CAPACITY 16
+#define HASHMAP_CAPACITY_GROW_THRESHOLD 0.75
+
 struct PtrLink {
     struct PtrLink *next;
     struct PtrLink *prev;
