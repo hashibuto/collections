@@ -13,8 +13,8 @@ END_TEST
 START_TEST(test_hashmap_add_and_remove_string_elements)
 {
     struct HashMap *map = hashmap_new();
-    map = hashmap_put_str(map, "key_001", "hello_key_001");
-    map = hashmap_put_str(map, "key_002", "hello_key_002");
+    hashmap_put_str(map, "key_001", "hello_key_001");
+    hashmap_put_str(map, "key_002", "hello_key_002");
     ck_assert_int_eq(map->size, 2);
     char *value = hashmap_get(map, "key_001");
     ck_assert_ptr_nonnull(value);
@@ -36,10 +36,87 @@ START_TEST(test_hashmap_grow_beyond_threshold_size)
     while((float)i / starting_cap < HASHMAP_CAPACITY_GROW_THRESHOLD) {
         sprintf(key, "key-%d", i);
         sprintf(value, "value-%d", i);
-        map = hashmap_put_str(map, key, value);
+        hashmap_put_str(map, key, value);
         i++;
     }
     ck_assert_int_gt(map->capacity, starting_cap);
+    char *v = hashmap_get(map, "key-5");
+    ck_assert_str_eq(v, "value-5");
+    hashmap_free(map);
+}
+END_TEST
+
+START_TEST(test_hashmap_no_grow_kv_check)
+{
+    struct HashMap *map = hashmap_new();
+    int starting_cap = map->capacity;
+    int i = 0;
+    char key[100];
+    char value[100];
+    for (int i = 0; i < HASHMAP_DEFAULT_CAPACITY / 2; i++) {
+        sprintf(key, "key-%d", i);
+        sprintf(value, "value-%d", i);
+        hashmap_put_str(map, key, value);
+    }
+    struct PtrLink *iter = hashmap_iter(map);
+    while (iter != NULL) {
+        struct HashMapEntry *ent = iter->item;
+        iter = iter->next;
+    }    
+    for (int i = 0; i < HASHMAP_DEFAULT_CAPACITY / 2; i++) {
+        sprintf(key, "key-%d", i);
+        sprintf(value, "value-%d", i);
+        char *ret_val = hashmap_get(map, key);
+        ck_assert_str_eq(value, ret_val);   
+    }
+    hashmap_free(map);
+}
+END_TEST
+
+START_TEST(test_hashmap_grow_kv_check)
+{
+    struct HashMap *map = hashmap_new();
+    int starting_cap = map->capacity;
+    int i = 0;
+    char key[100];
+    char value[100];
+    for (int i = 0; i < HASHMAP_DEFAULT_CAPACITY * 2; i++) {
+        sprintf(key, "key-%d", i);
+        sprintf(value, "value-%d", i);
+        hashmap_put_str(map, key, value);
+    }
+    struct PtrLink *iter = hashmap_iter(map);
+    while (iter != NULL) {
+        struct HashMapEntry *ent = iter->item;
+        iter = iter->next;
+    }    
+    for (int i = 0; i < HASHMAP_DEFAULT_CAPACITY * 2; i++) {
+        sprintf(key, "key-%d", i);
+        sprintf(value, "value-%d", i);
+        char *ret_val = hashmap_get(map, key);
+        ck_assert_str_eq(value, ret_val);   
+    }
+    hashmap_free(map);
+}
+END_TEST
+
+START_TEST(test_hashmap_grow_beyond_threshold_then_shrink)
+{
+    struct HashMap *map = hashmap_new();
+    int starting_cap = map->capacity;
+    int i = 0;
+    char key[100];
+    char value[100];
+    for (int i = 0; i < HASHMAP_DEFAULT_CAPACITY * 5; i++) {
+        sprintf(key, "key-%d", i);
+        sprintf(value, "value-%d", i);
+        hashmap_put_str(map, key, value);
+    }
+    for (int i = HASHMAP_DEFAULT_CAPACITY / 2; i < HASHMAP_DEFAULT_CAPACITY * 5; i++) {
+        sprintf(key, "key-%d", i);
+        hashmap_del(map, key);
+    }
+    hashmap_optimize(map);
     char *v = hashmap_get(map, "key-5");
     ck_assert_str_eq(v, "value-5");
     hashmap_free(map);
@@ -57,6 +134,9 @@ Suite *hashmap_suite(void) {
     tcase_add_test(tc_core, test_hashmap_create_and_destroy);
     tcase_add_test(tc_core, test_hashmap_add_and_remove_string_elements);
     tcase_add_test(tc_core, test_hashmap_grow_beyond_threshold_size);
+    tcase_add_test(tc_core, test_hashmap_no_grow_kv_check);
+    tcase_add_test(tc_core, test_hashmap_grow_kv_check);
+    tcase_add_test(tc_core, test_hashmap_grow_beyond_threshold_then_shrink);
     suite_add_tcase(s, tc_core);
 
     return s;

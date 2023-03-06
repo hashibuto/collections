@@ -1,3 +1,6 @@
+#ifndef COLLECTIONS_H
+#define COLLECTIONS_H
+
 #define HASHMAP_DEFAULT_CAPACITY 16
 #define HASHMAP_CAPACITY_GROW_THRESHOLD 0.75
 
@@ -20,16 +23,19 @@ struct HashMapEntry {
     struct HashMapEntry *next;
     struct PtrLink *link;
     unsigned long long hash;
-    int key_offset;
-    int value_offset;
+    char *key;
+    void *value;
 };
 
 extern struct HashMap *hashmap_new();
-extern struct HashMap *hashmap_put(struct HashMap *hashmap, char *key, void *value, int size);
-extern struct HashMap *hashmap_put_int(struct HashMap *hashmap, char *key, int value);
-extern struct HashMap *hashmap_put_str(struct HashMap *hashmap, char *key, char *value);
+void hashmap_put(struct HashMap *hashmap, char *key, void *value, int size);
+void hashmap_put_int(struct HashMap *hashmap, char *key, int value);
+void hashmap_put_str(struct HashMap *hashmap, char *key, char *value);
 extern void *hashmap_get(struct HashMap *hashmap, char *key);
 extern void hashmap_del(struct HashMap *hashmap, char *key);
 extern struct PtrLink *hashmap_iter(struct HashMap *hashmap);
 extern struct HashMapEntry *hashmap_iter_get(struct PtrLink *iter);
 extern void hashmap_free(struct HashMap *hashmap);
+void hashmap_optimize(struct HashMap *map);
+
+#endif /* COLLECTIONS_H */

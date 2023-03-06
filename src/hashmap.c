@@ -4,10 +4,11 @@
 #include "collections.h"
 
 struct HashMap *_hashmap_new(int capacity);
-struct HashMap *_hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashmap_entry);
+void _hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashmap_entry);
 struct HashMapEntry *_hashmap_new_item(char *key, void *value, int value_size);
 void *_hashmap_get(struct HashMap *hashmap, char *key, unsigned long long hash);
-void _hashmap_free(struct HashMap *hashmap, int free_entries);
+void _hashmap_optimize(struct HashMap *map, int size, int do_shrink);
+void _hashmap_insert_in_hashmap(struct HashMap *map, struct HashMapEntry *hashmap_entry);
 unsigned long long _hash(char *key);
 
 // hashmap_new creates a new hashmap
@@ -15,19 +16,19 @@ struct HashMap *hashmap_new() {
     return _hashmap_new(HASHMAP_DEFAULT_CAPACITY);
 }
 
-struct HashMap *hashmap_put(struct HashMap *hashmap, char *key, void *value, int size) {
+void hashmap_put(struct HashMap *hashmap, char *key, void *value, int size) {
     struct HashMapEntry *hash_map_entry = _hashmap_new_item(key, value, size);
-    return _hashmap_put(hashmap, hash_map_entry);
+    _hashmap_put(hashmap, hash_map_entry);
 }
 
 // hashmap_put_int is a convenience method for storing an integer value on the hashmap
-struct HashMap *hashmap_put_int(struct HashMap *hashmap, char *key, int value) {
-    return hashmap_put(hashmap, key, &value, sizeof(int));
+void hashmap_put_int(struct HashMap *hashmap, char *key, int value) {
+    hashmap_put(hashmap, key, &value, sizeof(int));
 }
 
 // hashmap_put_str is a convenience function for storing a string value on the hashmap
-struct HashMap *hashmap_put_str(struct HashMap *hashmap, char *key, char *value) {
-    return hashmap_put(hashmap, key, value, strlen(value)+1);
+void hashmap_put_str(struct HashMap *hashmap, char *key, char *value) {
+    hashmap_put(hashmap, key, value, strlen(value)+1);
 }
 
 // hashmap_get returns NULL if the key cannot be located, otherwise a value pointer
@@ -37,14 +38,16 @@ void *hashmap_get(struct HashMap *hashmap, char *key) {
     if (ent == NULL) {
         return NULL;
     }
-    return (void *)(ent+ent->value_offset);
+    return ent->value;
 }
 
 // hashmap_del removes an item from the map or does nothing if the key doesn't exist
 void hashmap_del(struct HashMap *hashmap, char *key) {
     unsigned long long hash = _hash(key);
     struct HashMapEntry *ent = _hashmap_get(hashmap, key, hash);
-    if (ent == NULL) return;
+    if (ent == NULL) {
+        return;
+    }
 
     int offset = hash % hashmap->capacity;
     if (ent->prev == NULL) {
@@ -91,15 +94,50 @@ void hashmap_del(struct HashMap *hashmap, char *key) {
 }
 
 void hashmap_free(struct HashMap *hashmap) {
-    _hashmap_free(hashmap, 1);
+    struct PtrLink *iter = hashmap_iter(hashmap);
+    while (iter != NULL) {
+        struct PtrLink *next_iter = iter->next;
+        free(iter->item);
+        free(iter);
+        iter = next_iter;
+    }
+    free(hashmap->items);
+    free(hashmap);
 }
 
-char *hashmap_entry_key(struct HashMapEntry *ent) {
-    return (char *)(ent + ent->key_offset);
+// hashmap_optimize will attempt to optimize the provided hashmap by either expanding or collapsing it.  If the map is already optimally sized
+// no penalty will be incurred.
+void hashmap_optimize(struct HashMap *map) {
+    _hashmap_optimize(map, map->size, 1);
 }
 
-void *hashmap_entry_value(struct HashMapEntry *ent) {
-    return (void *)(ent + ent->value_offset);
+void _hashmap_optimize(struct HashMap *map, int size, int do_shrink) {
+    int new_capacity = 0;
+    float grow_thresh = (float)size / (float)map->capacity;
+    if (grow_thresh >= HASHMAP_CAPACITY_GROW_THRESHOLD) {
+        new_capacity = map->capacity * 2;
+    } else if (do_shrink && ((float)size / (float)(map->capacity / 2)) < HASHMAP_CAPACITY_GROW_THRESHOLD && map->capacity > HASHMAP_DEFAULT_CAPACITY) {
+        new_capacity = map->capacity / 2;
+        while(((float)size / (float)(new_capacity / 2)) < HASHMAP_CAPACITY_GROW_THRESHOLD && new_capacity > HASHMAP_DEFAULT_CAPACITY) {
+            new_capacity /= 2;
+        }
+    }
+
+    if (new_capacity != 0) {
+        free(map->items);
+        map->items = calloc(new_capacity, sizeof(void *));
+        map->capacity = new_capacity;
+
+        struct PtrLink *iter = hashmap_iter(map);
+        while (iter != NULL) {
+            struct HashMapEntry *hme = iter->item;
+            // Reset these since the linked list is changing
+            hme->prev = NULL;
+            hme->next = NULL;
+            _hashmap_insert_in_hashmap(map, hme);
+            iter = iter->next;
+        }
+    }
 }
 
 // hashmap_iter returns a linked list link entry which can be used to traverse the map, using the ->next
@@ -119,7 +157,7 @@ void *_hashmap_get(struct HashMap *hashmap, char *key, unsigned long long hash) 
 
     struct HashMapEntry *cur_ent = hashmap->items[offset];
     while (cur_ent != NULL) {
-        if (cur_ent->hash == hash && (strcmp((char *)(cur_ent+cur_ent->key_offset), key) == 0)) {
+        if (cur_ent->hash == hash && (strcmp(cur_ent->key, key) == 0)) {
             return cur_ent;
         }
         cur_ent = cur_ent->next;
@@ -138,88 +176,61 @@ struct HashMapEntry *_hashmap_new_item(char *key, void *value, int value_size) {
     struct HashMapEntry *hashMapEntry = malloc(value_offset + value_size);
     hashMapEntry->prev = NULL;
     hashMapEntry->next = NULL;
-    hashMapEntry->key_offset = key_offset;
-    hashMapEntry->value_offset = value_offset;
+    hashMapEntry->link = NULL;
+    hashMapEntry->key = (char *) (((void*)hashMapEntry) + key_offset);
+    hashMapEntry->value = (void *) (((void *)hashMapEntry) + value_offset);
     hashMapEntry->hash = hash;
-    memcpy(hashMapEntry + key_offset, key, key_size);
-    memcpy(hashMapEntry + value_offset, value, value_size);
+    memcpy(hashMapEntry->key, key, key_size);
+    memcpy(hashMapEntry->value, value, value_size);
     return hashMapEntry;
 }
 
-struct HashMap *_hashmap_put(struct HashMap *hashmap, struct HashMapEntry *hashmap_entry) {
-    float thresh = (float)(hashmap->size + 1) / (float)hashmap->capacity;
-    if (thresh >= HASHMAP_CAPACITY_GROW_THRESHOLD) {
-        struct HashMap *new_hashmap = _hashmap_new(hashmap->capacity * 2);
-        struct PtrLink *iter = hashmap_iter(hashmap);
-        while (iter != NULL) {
-            struct HashMapEntry *hme = iter->item;
-            // Reset these since the linked list is changing
-            hme->prev = NULL;
-            hme->next = NULL;
-            new_hashmap = _hashmap_put(new_hashmap, iter->item);
-            iter = iter->next;
-        }
-        // Free the old hashmap, but don't release the memory for the HashMapEntry objects
-        _hashmap_free(hashmap, 0);
-        hashmap = new_hashmap;
-    }
-    
-    int offset = hashmap_entry->hash % hashmap->capacity;
-    if (hashmap->items[offset] == NULL) {
-        // Drop the new entry there
-        hashmap->items[offset] = hashmap_entry;
-    } else {
-        struct HashMapEntry *cur_ent = hashmap->items[offset];
-        while (cur_ent->next != NULL) {
-            cur_ent = cur_ent->next;
-        }
-        cur_ent->next = hashmap_entry;
-        hashmap_entry->prev = cur_ent;
-    }
+void _hashmap_put(struct HashMap *map, struct HashMapEntry *hashmap_entry) {
+    _hashmap_optimize(map, map->size+1, 0);
+    _hashmap_insert_in_hashmap(map, hashmap_entry);
 
     struct PtrLink *link = malloc(sizeof(struct PtrLink));
     link->next = NULL;
     link->item = hashmap_entry;
     hashmap_entry->link = link;
 
-    if (hashmap->head == NULL) {
+    if (map->head == NULL) {
         link->prev = NULL;
-        hashmap->head = link;
-        hashmap->tail = link;
+        map->head = link;
+        map->tail = link;
     } else {
-        hashmap->tail->next = link;
-        link->prev = hashmap->tail;
-        hashmap->tail = link;
+        map->tail->next = link;
+        link->prev = map->tail;
+        map->tail = link;
     }
-    hashmap->size++;
-    return hashmap;
+    map->size++;
+}
+
+void _hashmap_insert_in_hashmap(struct HashMap *map, struct HashMapEntry *hashmap_entry) {
+    int offset = hashmap_entry->hash % map->capacity;
+    struct HashMapEntry *cur_ent = map->items[offset];
+    if (cur_ent == NULL) {
+        // Drop the new entry there
+        map->items[offset] = hashmap_entry;
+    } else {
+        while (cur_ent->next != NULL) {
+            cur_ent = cur_ent->next;
+        }
+        cur_ent->next = hashmap_entry;
+        hashmap_entry->prev = cur_ent;
+    }
 }
 
 // _hashmap_new creates a new hashmap
 struct HashMap *_hashmap_new(int capacity) {
     struct HashMap *hashmap = malloc(sizeof(struct HashMap));
-    hashmap->items = calloc(capacity, sizeof(struct HashMapEntry *));
-
+    hashmap->items = calloc(capacity, sizeof(void *));
     hashmap->size = 0;
     hashmap->capacity = capacity;
     hashmap->head = NULL;
     hashmap->tail = NULL;
 
     return hashmap;
-}
-
-void _hashmap_free(struct HashMap *hashmap, int free_entries) {
-    struct PtrLink *iter = hashmap_iter(hashmap);
-    while (iter != NULL) {
-        struct PtrLink *next_iter = iter->next;
-        if (free_entries) {
-            free(iter->item);
-        }
-        free(iter);
-        iter = next_iter;
-    }
-    free(hashmap->items);
-    free(hashmap);
 }
 
 // _hash returns the hashed value of the provided key
