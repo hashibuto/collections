@@ -89,7 +89,6 @@ void hashmap_del(struct HashMap *hashmap, char *key) {
     }
     hashmap->size--;
 
-    free(link);
     free(ent);
 }
 
@@ -98,7 +97,6 @@ void hashmap_free(struct HashMap *hashmap) {
     while (iter != NULL) {
         struct PtrLink *next_iter = iter->next;
         free(iter->item);
-        free(iter);
         iter = next_iter;
     }
     free(hashmap->items);
@@ -170,13 +168,14 @@ void *_hashmap_get(struct HashMap *hashmap, char *key, unsigned long long hash) 
 // _hashmap_new_item allocates memory for a single item to be stored in the hash map.
 struct HashMapEntry *_hashmap_new_item(char *key, void *value, int value_size) {
     unsigned long long hash = _hash(key);
-    int key_offset = sizeof(struct HashMapEntry);
+    int link_offset = sizeof(struct HashMapEntry);
+    int key_offset = link_offset + sizeof(struct PtrLink);
     int key_size = strlen(key) + 1;
     int value_offset = key_offset + key_size;
     struct HashMapEntry *hashMapEntry = malloc(value_offset + value_size);
     hashMapEntry->prev = NULL;
     hashMapEntry->next = NULL;
-    hashMapEntry->link = NULL;
+    hashMapEntry->link = (struct PtrLink *) (((void*)hashMapEntry) + link_offset);
     hashMapEntry->key = (char *) (((void*)hashMapEntry) + key_offset);
     hashMapEntry->value = (void *) (((void *)hashMapEntry) + value_offset);
     hashMapEntry->hash = hash;
@@ -189,10 +188,9 @@ void _hashmap_put(struct HashMap *map, struct HashMapEntry *hashmap_entry) {
     _hashmap_optimize(map, map->size+1, 0);
     _hashmap_insert_in_hashmap(map, hashmap_entry);
 
-    struct PtrLink *link = malloc(sizeof(struct PtrLink));
+    struct PtrLink *link = hashmap_entry->link;
     link->next = NULL;
     link->item = hashmap_entry;
-    hashmap_entry->link = link;
 
     if (map->head == NULL) {
         link->prev = NULL;
