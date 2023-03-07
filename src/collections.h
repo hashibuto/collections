@@ -28,14 +28,14 @@ struct HashMapEntry {
 };
 
 extern struct HashMap *hashmap_new();
-void hashmap_put(struct HashMap *hashmap, char *key, void *value, int size);
-void hashmap_put_int(struct HashMap *hashmap, char *key, int value);
-void hashmap_put_str(struct HashMap *hashmap, char *key, char *value);
+extern void hashmap_put(struct HashMap *hashmap, char *key, void *value, int size);
+extern void hashmap_put_int(struct HashMap *hashmap, char *key, int value);
+extern void hashmap_put_str(struct HashMap *hashmap, char *key, char *value);
 extern void *hashmap_get(struct HashMap *hashmap, char *key);
 extern void hashmap_del(struct HashMap *hashmap, char *key);
 extern struct PtrLink *hashmap_iter(struct HashMap *hashmap);
 extern struct HashMapEntry *hashmap_iter_get(struct PtrLink *iter);
 extern void hashmap_free(struct HashMap *hashmap);
-void hashmap_optimize(struct HashMap *map);
+extern void hashmap_optimize(struct HashMap *map);
 
 #endif /* COLLECTIONS_H */
